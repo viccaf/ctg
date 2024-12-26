@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from thefuzz import process
 import os
+import numpy as np
 
 def load_value_list():
     try:
@@ -12,9 +13,9 @@ def load_value_list():
 
 def find_closest_match(val, choices):
     if pd.isna(val):
-        return None
+        return None, 0
     match, score = process.extractOne(str(val), choices)
-    return match
+    return (match, score) if score >= 90 else ("REFUSÉ", score)
 
 def process_file(uploaded_file, value_list_df):
     if uploaded_file is None:
@@ -28,14 +29,37 @@ def process_file(uploaded_file, value_list_df):
             return None
             
         choices = value_list_df["Valeur CRP"].astype(str).tolist()
-        df["Matched_Value"] = df["VAL_NAT_CRP *"].apply(
+        
+        # Créer les colonnes pour les matches et scores
+        matches_and_scores = df["VAL_NAT_CRP *"].apply(
             lambda x: find_closest_match(x, choices)
         )
+        
+        df["Matched_Value"] = matches_and_scores.apply(lambda x: x[0])
+        df["Match_Score"] = matches_and_scores.apply(lambda x: x[1])
         
         return df
     except Exception as e:
         st.error(f"Erreur lors du traitement du fichier: {str(e)}")
         return None
+
+def display_statistics(df):
+    total = len(df)
+    refused = len(df[df["Matched_Value"] == "REFUSÉ"])
+    accepted = total - refused
+    corrected = len(df[
+        (df["Matched_Value"] != "REFUSÉ") & 
+        (df["VAL_NAT_CRP *"] != df["Matched_Value"])
+    ])
+
+    st.write("### Statistiques")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Mots acceptés", f"{accepted} ({(accepted/total*100):.1f}%)")
+    with col2:
+        st.metric("Mots corrigés", f"{corrected} ({(corrected/total*100):.1f}%)")
+    with col3:
+        st.metric("Mots refusés", f"{refused} ({(refused/total*100):.1f}%)")
 
 def main():
     st.title("Matching Fuzzy des Valeurs CRP")
@@ -53,10 +77,21 @@ def main():
         result_df = process_file(uploaded_file, value_list_df)
         
         if result_df is not None:
-            st.write("Aperçu des résultats:")
-            st.dataframe(result_df)
+            display_statistics(result_df)
             
-            # Option de téléchargement
+            st.write("### Aperçu des résultats")
+            # Formater le DataFrame pour l'affichage
+            def color_refused(val):
+                return 'background-color: red' if val == "REFUSÉ" else ''
+            
+            styled_df = result_df.style.apply(
+                lambda x: ['background-color: red' if v == "REFUSÉ" else '' 
+                          for v in x], 
+                subset=['Matched_Value']
+            )
+            
+            st.dataframe(styled_df)
+            
             csv = result_df.to_csv(index=False)
             st.download_button(
                 "Télécharger les résultats (CSV)",
