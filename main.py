@@ -62,7 +62,7 @@ def display_statistics(df):
         st.metric("Mots refusés", f"{refused} ({(refused/total*100):.1f}%)")
 
 def main():
-    st.title("Matching Fuzzy des Valeurs CRP")
+    st.title("Correction des valeurs CTG")
     
     value_list_df = load_value_list()
     if value_list_df is None:
